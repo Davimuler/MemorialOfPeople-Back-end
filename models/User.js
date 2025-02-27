@@ -2,15 +2,27 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema({
-    firstName: { type: String, required: true },
-    lastName: { type: String, required: true },
+    firstName: { type: String },
+    lastName: { type: String },
     email: { type: String, required: true, unique: true },
-    phoneNumber: { type: String, required: true },
-    password: { type: String, required: true },
+    displayName: { type: String },
+    phoneNumber: { type: String },
+    password: { type: String },
+    uid: { type: String, unique: true },
+    provider: { type: String, enum: ['local', 'google'], default: 'local' },
+    referralCode: { type: String, default: '' },
+    referralCount: { type: Number, default: 0 },
+    paymentHistory: [{
+        date: { type: Date, default: Date.now },
+        amount: { type: Number, required: true },
+        status: { type: String, enum: ['pending', 'completed', 'failed'], required: true }
+    }],
+    createdProfiles: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Profile' }] // Ссылки на созданные профили
 });
 
+// Хэширование пароля только для локальных пользователей
 userSchema.pre('save', async function(next) {
-    if (!this.isModified('password')) {
+    if (!this.isModified('password') || this.provider !== 'local') {
         return next();
     }
     const salt = await bcrypt.genSalt(10);

@@ -12,12 +12,18 @@ const userSchema = new mongoose.Schema({
     provider: { type: String, enum: ['local', 'google'], default: 'local' },
     referralCode: { type: String, default: '' },
     referralCount: { type: Number, default: 0 },
+    userStatus: {
+        type: String,
+        enum: ['user', 'partner', 'agent'],
+        default: 'user'
+    },
     paymentHistory: [{
         date: { type: Date, default: Date.now },
         amount: { type: Number, required: true },
         status: { type: String, enum: ['pending', 'completed', 'failed'], required: true }
     }],
-    createdProfiles: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Profile' }] // Ссылки на созданные профили
+    createdProfiles: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Profile' }], // Ссылки на созданные профили
+    isDiscount: { type: Boolean, default: false } // Новая булевая переменная
 });
 
 // Хэширование пароля только для локальных пользователей

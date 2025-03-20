@@ -177,7 +177,106 @@ updateReferralCode = async (req, res) => {
         res.status(500).json({ message: 'Помилка сервера при оновленні реферального коду' });
     }
 };
+const incrementReferralCount = async (req, res) => {
+    const { userId } = req.body;
+
+    if (!userId) {
+        return res.status(400).json({ message: 'Необхідно надати userId' });
+    }
+
+    try {
+        // Находим пользователя и увеличиваем referralCount на 1
+        const updatedUser = await User.findOneAndUpdate(
+            { _id: userId },
+            { $inc: { referralCount: 1 } }, // Используем $inc для инкремента
+            { new: true } // Возвращаем обновленный документ
+        );
+
+        if (!updatedUser) {
+            return res.status(404).json({ message: 'Користувача не знайдено' });
+        }
+
+        res.status(200).json({ message: 'Реферальний лічильник успішно оновлено', user: updatedUser });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Помилка сервера при оновленні реферального лічильника' });
+    }
+};
+const incrementReferralCountByCode = async (req, res) => {
+    const { referralCode } = req.body;
+
+    if (!referralCode) {
+        return res.status(400).json({ message: 'Необхідно надати referralCode' });
+    }
+
+    try {
+        // Находим пользователя по реферальному коду
+        const user = await User.findOne({ referralCode });
+
+        if (!user) {
+            return res.status(404).json({ message: 'Користувача з таким реферальним кодом не знайдено' });
+        }
+
+        // Увеличиваем referralCount на 1
+        user.referralCount += 1;
+        await user.save();
+
+        res.status(200).json({ message: 'Реферальний лічильник успішно оновлено', user });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Помилка сервера при оновленні реферального лічильника' });
+    }
+};
+const updateDiscountStatus = async (req, res) => {
+    const { userId, isDiscount } = req.body;
+
+    if (userId === undefined || isDiscount === undefined) {
+        return res.status(400).json({ message: 'Необхідно надати userId та isDiscount' });
+    }
+
+    try {
+        // Находим пользователя и обновляем поле isDiscount
+        const updatedUser = await User.findOneAndUpdate(
+            { _id: userId }, // Ищем пользователя по ID
+            { $set: { isDiscount } }, // Обновляем поле isDiscount
+            { new: true } // Возвращаем обновленный документ
+        );
+
+        if (!updatedUser) {
+            return res.status(404).json({ message: 'Користувача не знайдено' });
+        }
+
+        res.status(200).json({ message: 'Статус знижки успішно оновлено', user: updatedUser });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Помилка сервера при оновленні статусу знижки' });
+    }
+};
+const becomePartner = async (req, res) => {
+    const { userId } = req.body;
+
+    if (!userId) {
+        return res.status(400).json({ message: 'Необхідно надати userId' });
+    }
+
+    try {
+        // Находим пользователя и обновляем его статус на "partner"
+        const updatedUser = await User.findOneAndUpdate(
+            { _id: userId }, // Ищем пользователя по ID
+            { $set: { userStatus: 'partner' } }, // Обновляем статус на "partner"
+            { new: true } // Возвращаем обновленный документ
+        );
+
+        if (!updatedUser) {
+            return res.status(404).json({ message: 'Користувача не знайдено' });
+        }
+
+        res.status(200).json({ message: 'Статус успішно оновлено на партнера', user: updatedUser });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Помилка сервера при оновленні статусу на партнера' });
+    }
+};
 
 
-
-module.exports = { registerUser, authUser,googleLogin, updateReferralCode,getUserByEmail};
+module.exports = {becomePartner ,updateDiscountStatus, incrementReferralCountByCode, incrementReferralCount, registerUser, authUser,googleLogin, updateReferralCode,getUserByEmail};

@@ -1,88 +1,114 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
-const cors = require('cors'); // Импортируем CORS
-const multer = require('multer'); // Для обработки загрузки файлов
-const { google } = require('googleapis'); // Для работы с Google Drive API
+const cors = require('cors');
+const multer = require('multer');
+const { google } = require('googleapis');
 const path = require('path');
 const fs = require('fs');
+const cloudinary = require('cloudinary').v2;
 
 const authRoutes = require('./routes/auth');
-const profileRoutes = require('./routes/profile'); // Импортируем маршруты для профиля
+const profileRoutes = require('./routes/profile');
+const draftRoutes = require('./routes/draft');
+const siteSettingsRoutes = require('./routes/siteSettings');
+const supportRoutes = require('./routes/supportRoutes');
+const monumentsRouter = require('./routes/monument');
+const orderRouter =require('./routes/order')
 
 dotenv.config();
 
+
+
 const app = express();
-app.use(express.json()); // Для обработки JSON в теле запроса
-app.use(cors()); // Разрешаем все CORS-запросы
+app.use(express.json());
+app.use(cors({
+    origin: "http://localhost:3000", // Разрешаем запросы только с фронтенда
+    credentials: true,
+    methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+    allowedHeaders: "Content-Type,Authorization",
+}));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Подключение к MongoDB
 mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log('Подключено к MongoDB'))
     .catch((error) => console.error('Ошибка подключения:', error));
 
-// Настройка Multer для загрузки файлов
-const upload = multer({ dest: 'uploads/' }); // Временное хранилище для файлов
-
-// Путь к JSON-файлу с ключами сервисного аккаунта
-const KEYFILEPATH = path.join(__dirname, 'service-account-keys.json');
-
-// Права доступа для Google Drive API
-const SCOPES = ['https://www.googleapis.com/auth/drive'];
-
-// Авторизация через сервисный аккаунт
-const auth = new google.auth.GoogleAuth({
-    keyFile: KEYFILEPATH,
-    scopes: SCOPES,
+// Настройка Multer
+const upload = multer({
+    dest: 'uploads/',
+    limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
 });
 
-// Загрузка файла на Google Drive
-const uploadFile = async (file) => {
-    const drive = google.drive({ version: 'v3', auth });
+// Настройка Cloudinary
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
-    // Метаданные файла
-    const fileMetadata = {
-        name: file.originalname, // Имя файла
-        parents: [process.env.GOOGLE_DRIVE_FOLDER_ID], // ID папки на Google Drive
-    };
-
-    // Медиа-данные файла
-    const media = {
-        mimeType: file.mimetype, // Тип файла
-        body: fs.createReadStream(file.path), // Поток для чтения файла
-    };
-
-    // Загрузка файла
-    const response = await drive.files.create({
-        requestBody: fileMetadata,
-        media: media,
-        fields: 'id', // Возвращаем только ID файла
-    });
-
-    // Удаляем временный файл
-    fs.unlinkSync(file.path);
-
-    return response.data.id;
+// Функция для загрузки файла на Cloudinary
+const uploadToCloudinary = async (filePath) => {
+    try {
+        const result = await cloudinary.uploader.upload(filePath, {
+            folder: 'your_folder_name',
+        });
+        return result;
+    } catch (error) {
+        console.error('Ошибка загрузки файла на Cloudinary:', error);
+        throw error;
+    }
 };
 
-// Роут для загрузки файла
+// Роут для загрузки файла на Cloudinary
 app.post('/api/upload', upload.single('file'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).send('Файл не выбран.');
         }
 
-        const fileId = await uploadFile(req.file);
-        res.send({ message: 'Файл успешно загружен!', fileId });
+        const result = await uploadToCloudinary(req.file.path);
+        fs.unlinkSync(req.file.path);
+
+        res.send({
+            message: 'Файл успешно загружен на Cloudinary!',
+            fileUrl: result.secure_url,
+            publicId: result.public_id,
+        });
     } catch (error) {
         console.error('Ошибка загрузки файла:', error);
         res.status(500).send('Ошибка загрузки файла.');
     }
 });
 
+// Роут для удаления файла с Cloudinary
+app.delete('/api/files/:publicId', async (req, res) => {
+    try {
+        const publicId = req.params.publicId;
+        const result = await cloudinary.uploader.destroy(publicId);
+
+        if (result.result === 'ok') {
+            res.send({ message: 'Файл успешно удален с Cloudinary!' });
+        } else {
+            res.status(404).send('Файл не найден.');
+        }
+    } catch (error) {
+        console.error('Ошибка удаления файла:', error);
+        res.status(500).send('Ошибка удаления файла.');
+    }
+});
+
 // Маршруты
-app.use('/api/auth', authRoutes); // Маршруты для аутентификации
-app.use('/api/profile', profileRoutes); // Маршруты для работы с профилем
+app.use('/api/auth', authRoutes);
+app.use('/api/profile', profileRoutes);
+app.use('/api/drafts', draftRoutes);
+app.use('/api/settings', siteSettingsRoutes);
+app.use('/api/support', supportRoutes);
+app.use('/api/monuments', monumentsRouter);
+app.use('/api/order', orderRouter);
+
 
 // Тестовый маршрут
 app.get('/', (req, res) => {

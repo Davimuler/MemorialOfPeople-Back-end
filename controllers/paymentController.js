@@ -65,8 +65,7 @@ exports.createPayment = async (req, res) => {
             currency,
             description: `${description} - ${draft.name}`,
             status: 'pending',
-            draftId: draft._id,
-            payment_id: orderId
+            draftId: draft._id
         });
         await payment.save();
 
@@ -106,100 +105,54 @@ exports.createPayment = async (req, res) => {
 // Оптимизированный обработчик коллбэка
 exports.handleCallback = async (req, res) => {
     try {
-        console.log('[Raw Callback Body]', req.body);
-
         const { data, signature } = req.body;
 
-        if (!data || !signature) {
-            console.error('[Missing Data] No data or signature in callback');
-            return res.status(400).json({ message: 'Missing data or signature' });
-        }
-
-        // Верификация подписи
+        // 1. Верификация подписи
         const computedSignature = crypto
             .createHash('sha1')
             .update(privateKey + data + privateKey)
             .digest('base64');
 
         if (signature !== computedSignature) {
-            console.error('[Invalid Signature]', {
-                received: signature,
-                computed: computedSignature,
-                privateKey: privateKey ? 'present' : 'missing'
-            });
+            console.error('[Invalid Signature]', { received: signature, computed: computedSignature });
             return res.status(400).json({ message: 'Invalid signature' });
         }
 
-        // Парсинг данных
-        let decoded;
-        try {
-            decoded = JSON.parse(Buffer.from(data, 'base64').toString());
-            console.log('[Decoded Callback Data]', decoded);
-        } catch (parseError) {
-            console.error('[Parse Error] Failed to parse callback data:', parseError);
-            return res.status(400).json({ message: 'Invalid data format' });
-        }
+        // 2. Парсинг данных
+        const decoded = JSON.parse(Buffer.from(data, 'base64').toString());
+        console.log('[Callback Data]', decoded);
 
-        if (!decoded.order_id) {
-            console.error('[Missing Order ID] No order_id in callback data');
-            return res.status(400).json({ message: 'Missing order_id' });
-        }
-
-        // Поиск платежа
-        const payment = await Payment.findOne({ orderId: decoded.order_id });
-        if (!payment) {
-            console.error('[Payment Not Found] for orderId:', decoded.order_id);
-            return res.status(404).json({ message: 'Payment not found' });
-        }
-
-        // Обновление платежа
-        const updatedPayment = await Payment.findOneAndUpdate(
-            { _id: payment._id },
+        // 3. Поиск и обновление платежа
+        const payment = await Payment.findOneAndUpdate(
+            { orderId: decoded.order_id },
             {
                 status: decoded.status,
-                liqpayOrderId: decoded.liqpay_order_id || decoded.payment_id || decoded.liqpayOrderId,
-                lastCallback: new Date(),
-                rawCallback: decoded // сохраняем полные данные callback для отладки
+                liqpayOrderId: decoded.liqpay_order_id || decoded.payment_id,
+                lastCallback: new Date()
             },
             { new: true }
         );
 
-        console.log('[Updated Payment]', updatedPayment);
+        if (!payment) {
+            return res.status(404).json({ message: 'Payment not found' });
+        }
 
-        // Обновление черновика при успешной оплате
-        if (['success', 'sandbox', 'subscribed'].includes(decoded.status.toLowerCase())) {
-            const updatedDraft = await Draft.findByIdAndUpdate(
+        // 4. Обновление черновика при успешной оплате
+        if (['success', 'subscribed'].includes(decoded.status)) {
+            await Draft.findByIdAndUpdate(
                 payment.draftId,
-                {
-                    paid: true,
-                    paymentDate: new Date(),
-                    $setOnInsert: { orderId: payment.orderId } // на случай если draft не был обновлен ранее
-                },
-                { new: true }
+                { paid: true, paymentDate: new Date() }
             );
-
-            if (!updatedDraft) {
-                console.error('[Draft Update Failed] Draft not found:', payment.draftId);
-            } else {
-                console.log('[Updated Draft] Marked as paid:', updatedDraft._id);
-            }
+            console.log(`Marked draft ${payment.draftId} as paid`);
         }
 
         res.status(200).send('OK');
 
     } catch (error) {
-        console.error('[Callback Processing Error]', {
-            error: error.message,
-            stack: error.stack,
-            body: req.body
-        });
-        res.status(500).json({
-            message: 'Callback processing failed',
-            error: error.message
-        });
+        console.error('[Callback Error]', error);
+        res.status(500).json({ message: 'Callback processing failed' });
     }
 };
-
 
 // Проверка статуса (оптимизированная)
 exports.checkStatus = async (req, res) => {

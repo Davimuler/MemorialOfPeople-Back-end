@@ -17,20 +17,19 @@ const generateLiqPayData = (params) => {
 // Создание платежа
 exports.createPayment = async (req, res) => {
     try {
-        const { amount, currency, description } = req.body;
-        const orderId = `order_${Date.now()}`; // Уникальный ID заказа
+        const { amount, currency, description, profileData } = req.body;
+        const orderId = `order_${Date.now()}`;
 
-        // Сохранение платежа в MongoDB
         const payment = new Payment({
             orderId,
             amount,
             currency,
             description,
+            profileData,   // ⬅️ сюда добавляем профиль который нужно создать после оплаты
             status: 'pending',
         });
         await payment.save();
 
-        // Параметры для LiqPay
         const params = {
             public_key: publicKey,
             version: '3',
@@ -40,24 +39,24 @@ exports.createPayment = async (req, res) => {
             description,
             order_id: orderId,
             language: 'ru',
-            server_url: 'https://api.livingmemory.pro/api/payment/callback', // Замените на ваш URL
-            result_url: 'http://localhost:3000/success', // Замените на ваш фронтенд
+            server_url: 'https://api.livingmemory.pro/api/payment/callback',
+            result_url: 'http://localhost:3000/success',
         };
 
         const { data, signature } = generateLiqPayData(params);
-        res.json({ data, signature });
+        res.json({ data, signature, orderId });
     } catch (error) {
         console.error('Error creating payment:', error);
         res.status(500).json({ message: 'Ошибка при создании платежа' });
     }
 };
 
-// Обработка callback от LiqPay
+const Draft = require('../models/Draft');
+
 exports.handleCallback = async (req, res) => {
     try {
         const { data, signature } = req.body;
 
-        // Проверка подписи
         const generatedSignature = crypto
             .createHash('sha1')
             .update(privateKey + data + privateKey)
@@ -66,15 +65,51 @@ exports.handleCallback = async (req, res) => {
             return res.status(400).json({ message: 'Недействительная подпись' });
         }
 
-        // Декодирование данных
         const decodedData = JSON.parse(Buffer.from(data, 'base64').toString('utf8'));
 
-        // Обновление статуса платежа
         const payment = await Payment.findOne({ orderId: decodedData.order_id });
-        if (payment) {
-            payment.status = decodedData.status;
-            payment.liqpayOrderId = decodedData.payment_id;
-            await payment.save();
+        if (!payment) return res.status(404).json({ message: 'Платеж не найден' });
+
+        payment.status = decodedData.status;
+        payment.liqpayOrderId = decodedData.payment_id;
+        await payment.save();
+
+        // === Если оплата успешна, создаем профиль ===
+        if (decodedData.status === 'success') {
+            const {
+                email,
+                name,
+                quote,
+                description,
+                mainPhoto,
+                gallery,
+                birthDay,
+                birthMonth,
+                birthYear,
+                deathDay,
+                deathMonth,
+                deathYear,
+                youtubeVideoUrl,
+            } = payment.profileData;
+
+            const draft = new Draft({
+                email,
+                name,
+                quote,
+                description,
+                mainPhoto,
+                gallery,
+                birthDay,
+                birthMonth,
+                birthYear,
+                deathDay,
+                deathMonth,
+                deathYear,
+                youtubeVideoUrl,
+            });
+
+            await draft.save();
+            console.log(`Профиль создан для оплаты: ${decodedData.order_id}`);
         }
 
         res.status(200).send('OK');

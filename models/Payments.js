@@ -8,6 +8,7 @@ const PaymentSchema = new mongoose.Schema({
     description: { type: String, required: true },
     status: { type: String, default: 'pending' },
     liqpayOrderId: { type: String },
+    payment_id: { type: String, unique: true, sparse: true },
     createdAt: { type: Date, default: Date.now },
 });
 

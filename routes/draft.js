@@ -8,6 +8,8 @@ router.get("/email/:email", draftController.getDraftsByEmail);
 router.put("/:draftId/paid", draftController.updateDraftPaymentStatus);
 router.get("/id/:draftId", draftController.getDraftById);
 router.put("/update/:draftId", draftController.updateDraft);
+router.get('/search',draftController.searchDraftsByName)
+router.get('/paginated',draftController.getDraftsPaginated)
 
 
 module.exports = router;

@@ -155,5 +155,106 @@ const updateDraft = async (req, res) => {
         res.status(500).json({ message: "Ошибка при обновлении черновика" });
     }
 };
+const searchDraftsByName = async (req, res) => {
+    try {
+        const { name } = req.query; // Получаем имя из query параметров
+        const { email } = req.params; // Получаем email из параметров URL (опционально)
 
-module.exports = { saveDraft,updateDraftPaymentStatus, getDraftsByEmail,getDraftById, updateDraft };
+        // Создаем объект для условия поиска
+        const searchConditions = {};
+
+        // Если передано имя, добавляем в условия поиска (регистронезависимый поиск)
+        if (name) {
+            searchConditions.name = { $regex: name, $options: 'i' };
+        }
+
+        // Если передан email, добавляем в условия поиска
+        if (email) {
+            searchConditions.email = email;
+        }
+
+        // Если нет ни имени ни email - возвращаем ошибку
+        if (!name && !email) {
+            return res.status(400).json({
+                message: "Необходимо указать имя для поиска или email"
+            });
+        }
+
+        // Ищем черновики по условиям
+        const drafts = await Draft.find(searchConditions);
+
+        // Если ничего не найдено
+        if (!drafts || drafts.length === 0) {
+            return res.status(404).json({
+                message: "Черновики не найдены"
+            });
+        }
+
+        // Успешный ответ
+        res.status(200).json({
+            message: "Черновики успешно найдены",
+            drafts,
+        });
+    } catch (error) {
+        console.error("Ошибка при поиске черновиков:", error);
+        res.status(500).json({
+            message: "Ошибка при поиске черновиков"
+        });
+    }
+};
+const getDraftsPaginated = async (req, res) => {
+    try {
+        // Получаем параметры запроса с дефолтными значениями
+        const page = parseInt(req.query.page) || 1; // текущая страница (по умолчанию 1)
+        const limit = parseInt(req.query.limit) || 10; // количество элементов на странице (по умолчанию 10)
+        const { email } = req.query; // опциональный email для фильтрации
+
+        // Создаем условия для поиска
+        const query = {};
+        if (email) {
+            query.email = email;
+        }
+
+        // Вычисляем количество пропускаемых документов
+        const skip = (page - 1) * limit;
+
+        // Получаем черновики с пагинацией
+        const drafts = await Draft.find(query)
+            .skip(skip)
+            .limit(limit)
+            .exec();
+
+        // Получаем общее количество черновиков (для информации о пагинации)
+        const total = await Draft.countDocuments(query);
+
+        // Вычисляем общее количество страниц
+        const totalPages = Math.ceil(total / limit);
+
+        // Успешный ответ
+        res.status(200).json({
+            message: "Черновики успешно получены",
+            drafts,
+            pagination: {
+                total,
+                totalPages,
+                currentPage: page,
+                itemsPerPage: limit,
+                hasNextPage: page < totalPages,
+                hasPrevPage: page > 1
+            }
+        });
+    } catch (error) {
+        console.error("Ошибка при получении черновиков с пагинацией:", error);
+        res.status(500).json({ message: "Ошибка при получении черновиков с пагинацией" });
+    }
+};
+
+module.exports = {
+    saveDraft,
+    updateDraftPaymentStatus,
+    getDraftsByEmail,
+    getDraftById,
+    updateDraft,
+    searchDraftsByName,
+    getDraftsPaginated
+};

@@ -1,0 +1,32 @@
+{
+  "name": "liqpay-sdk-nodejs",
+  "version": "1.0.3",
+  "license": "MIT",
+  "description": "Updated NPM wrapper for the official LiqPay SDK.",
+  "homepage": "https://github.com/rostag/sdk-nodejs#readme",
+  "main": "liqpay/lib/liqpay.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "bugs": {
+    "url": "https://github.com/rostag/sdk-nodejs/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rostag/sdk-nodejs.git"
+  },
+  "keywords": [
+    "liqpay",
+    "nodejs",
+    "api",
+    "sdk"
+  ],
+  "author": {
+    "name": "Rostyslav Siryk",
+    "email": "rostyslav.siryk@gmail.com",
+    "url": "https://bigpolicy.eu/"
+  },
+  "dependencies": {
+    "request": "2.80.x"
+  }
+}

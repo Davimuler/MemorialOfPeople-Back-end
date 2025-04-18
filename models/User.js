@@ -14,7 +14,7 @@ const userSchema = new mongoose.Schema({
     referralCount: { type: Number, default: 0 },
     userStatus: {
         type: String,
-        enum: ['user', 'partner', 'agent'],
+        enum: ['user', 'partner', 'agent','admin'],
         default: 'user'
     },
     paymentHistory: [{

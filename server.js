@@ -14,22 +14,22 @@ const draftRoutes = require('./routes/draft');
 const siteSettingsRoutes = require('./routes/siteSettings');
 const supportRoutes = require('./routes/supportRoutes');
 const monumentsRouter = require('./routes/monument');
-const orderRouter =require('./routes/order')
+const orderRouter = require('./routes/order');
+const paymentRoutes = require('./routes/payment');
 
 dotenv.config();
 
-
-
 const app = express();
-app.use(express.json());
+
+// Middleware
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use(cors({
-    origin: "http://localhost:3000", // Разрешаем запросы только с фронтенда
+    origin: ["http://localhost:3000", "http://138.68.78.80" , 'https://livingmemory.pro','https://www.livingmemory.pro'], // Разрешаем запросы с фронтенда
     credentials: true,
     methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
     allowedHeaders: "Content-Type,Authorization",
 }));
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Подключение к MongoDB
 mongoose.connect(process.env.MONGO_URI)
@@ -108,7 +108,7 @@ app.use('/api/settings', siteSettingsRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/monuments', monumentsRouter);
 app.use('/api/order', orderRouter);
-
+app.use('/api/payment', paymentRoutes);
 
 // Тестовый маршрут
 app.get('/', (req, res) => {
@@ -116,7 +116,8 @@ app.get('/', (req, res) => {
 });
 
 // Запуск сервера
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5005;
 app.listen(PORT, () => {
     console.log(`Сервер запущен на порту ${PORT}`);
+    console.log('LiqPay тестовые ключи:', process.env.LIQPAY_PUBLIC_KEY ? 'Загружены' : 'Не найдены');
 });

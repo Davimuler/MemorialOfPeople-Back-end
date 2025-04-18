@@ -1,3 +1,4 @@
+// controllers/paymentController.js
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const Payment = require('../models/Payments');
@@ -20,14 +21,59 @@ const generateLiqPayData = (params) => {
 exports.createPayment = async (req, res) => {
     try {
         const { amount, currency, description, profileData } = req.body;
+
+        // Проверка обязательных полей
+        if (!amount || !currency || !description || !profileData.email || !profileData.name) {
+            return res.status(400).json({ message: 'Отсутствуют обязательные поля: amount, currency, description, email или name' });
+        }
+
         const orderId = `order_${uuidv4()}`;
 
+        // Создание или обновление черновика
+        let draft = await Draft.findOne({ email: profileData.email, paid: false });
+        if (draft) {
+            // Обновляем существующий черновик
+            draft.name = profileData.name;
+            draft.quote = profileData.quote;
+            draft.description = profileData.description;
+            draft.mainPhoto = profileData.mainPhoto;
+            draft.gallery = profileData.gallery;
+            draft.birthDay = profileData.birthDay;
+            draft.birthMonth = profileData.birthMonth;
+            draft.birthYear = profileData.birthYear;
+            draft.deathDay = profileData.deathDay;
+            draft.deathMonth = profileData.deathMonth;
+            draft.deathYear = profileData.deathYear;
+            draft.youtubeVideoUrl = profileData.youtubeVideoUrl;
+            draft.orderId = orderId;
+        } else {
+            // Создаем новый черновик
+            draft = new Draft({
+                email: profileData.email,
+                name: profileData.name,
+                quote: profileData.quote,
+                description: profileData.description,
+                mainPhoto: profileData.mainPhoto,
+                gallery: profileData.gallery,
+                birthDay: profileData.birthDay,
+                birthMonth: profileData.birthMonth,
+                birthYear: profileData.birthYear,
+                deathDay: profileData.deathDay,
+                deathMonth: profileData.deathMonth,
+                deathYear: profileData.deathYear,
+                youtubeVideoUrl: profileData.youtubeVideoUrl,
+                paid: false,
+                orderId,
+            });
+        }
+        await draft.save();
+
+        // Создание платежа
         const payment = new Payment({
             orderId,
             amount,
             currency,
             description,
-            profileData,
             status: 'pending',
         });
         await payment.save();
@@ -80,54 +126,15 @@ exports.handleCallback = async (req, res) => {
         payment.liqpayOrderId = decodedData.payment_id;
         await payment.save();
 
+        // Обновление статуса черновика, если платеж успешен
         if (['success', 'subscribed'].includes(decodedData.status)) {
-            const {
-                email,
-                name,
-                quote,
-                description,
-                mainPhoto,
-                gallery,
-                birthDay,
-                birthMonth,
-                birthYear,
-                deathDay,
-                deathMonth,
-                deathYear,
-                youtubeVideoUrl,
-            } = payment.profileData;
-
-            if (!email || !name) {
-                console.error('Недостаточно данных для создания профиля:', payment.profileData);
-                return res.status(200).send('OK');
-            }
-
-            const existingDraft = await Draft.findOne({ email });
-            if (existingDraft) {
-                console.log(`Профиль для ${email} уже существует`);
-                return res.status(200).send('OK');
-            }
-
-            try {
-                const draft = new Draft({
-                    email,
-                    name,
-                    quote,
-                    description,
-                    mainPhoto,
-                    gallery,
-                    birthDay,
-                    birthMonth,
-                    birthYear,
-                    deathDay,
-                    deathMonth,
-                    deathYear,
-                    youtubeVideoUrl,
-                });
+            const draft = await Draft.findOne({ orderId: decodedData.order_id });
+            if (draft) {
+                draft.paid = true;
                 await draft.save();
-                console.log(`Профиль создан для оплаты: ${decodedData.order_id}`);
-            } catch (draftError) {
-                console.error('Ошибка при создании профиля:', draftError.message, draftError.stack);
+                console.log(`Черновик обновлен до paid=true для orderId: ${decodedData.order_id}`);
+            } else {
+                console.error(`Черновик не найден для orderId: ${decodedData.order_id}`);
             }
         }
 
@@ -135,5 +142,38 @@ exports.handleCallback = async (req, res) => {
     } catch (error) {
         console.error('Error in callback:', error.message, error.stack);
         res.status(500).json({ message: 'Ошибка в callback' });
+    }
+};
+
+// Проверка статуса черновика и обновление
+exports.checkProfileStatus = async (req, res) => {
+    try {
+        const { orderId } = req.body;
+
+        if (!orderId) {
+            return res.status(400).json({ message: 'orderId обязателен' });
+        }
+
+        const payment = await Payment.findOne({ orderId });
+        if (!payment) {
+            return res.status(404).json({ message: 'Платеж не найден' });
+        }
+
+        const draft = await Draft.findOne({ orderId });
+        if (!draft) {
+            return res.status(404).json({ message: 'Черновик не найден' });
+        }
+
+        // Если платеж успешен, обновляем статус черновика
+        if (['success', 'subscribed'].includes(payment.status) && !draft.paid) {
+            draft.paid = true;
+            await draft.save();
+            console.log(`Черновик обновлен до paid=true для orderId: ${orderId}`);
+        }
+
+        res.json({ draft, paymentStatus: payment.status });
+    } catch (error) {
+        console.error('Error checking profile status:', error.message, error.stack);
+        res.status(500).json({ message: 'Ошибка при проверке статуса черновика', error: error.message });
     }
 };

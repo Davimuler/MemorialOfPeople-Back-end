@@ -1,4 +1,3 @@
-// paymentController.js
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const Payment = require('../models/Payments');
@@ -7,7 +6,6 @@ const Draft = require('../models/Draft');
 const publicKey = process.env.LIQPAY_PUBLIC_KEY;
 const privateKey = process.env.LIQPAY_PRIVATE_KEY;
 
-// Функция для генерации data и signature
 const generateLiqPayData = (params) => {
     const data = Buffer.from(JSON.stringify(params)).toString('base64');
     const signature = crypto
@@ -17,97 +15,113 @@ const generateLiqPayData = (params) => {
     return { data, signature };
 };
 
-// Создание платежа и профиля
+// Создание платежа (обновлённая версия)
 exports.createPayment = async (req, res) => {
     try {
-        const { amount, currency, description, profileData } = req.body;
+        const { amount, currency, description, draftId } = req.body;
 
-        // Проверка обязательных полей
-        if (!amount || !currency || !description || !profileData.email || !profileData.name) {
-            return res.status(400).json({ message: 'Отсутствуют обязательные поля: amount, currency, description, email или name' });
-        }
-
-        const orderId = `order_${uuidv4()}`;
-
-        // Проверка, существует ли профиль с таким email
-        let draft = await Draft.findOne({ email: profileData.email, paid: false });
-        if (!draft) {
-            // Создание нового профиля
-            draft = new Draft({
-                email: profileData.email,
-                name: profileData.name,
-                quote: profileData.quote,
-                description: profileData.description,
-                mainPhoto: profileData.mainPhoto,
-                gallery: profileData.gallery,
-                birthDay: profileData.birthDay,
-                birthMonth: profileData.birthMonth,
-                birthYear: profileData.birthYear,
-                deathDay: profileData.deathDay,
-                deathMonth: profileData.deathMonth,
-                deathYear: profileData.deathYear,
-                youtubeVideoUrl: profileData.youtubeVideoUrl,
-                paid: false,
-                orderId,
+        // 1. Валидация входящих данных
+        if (!amount || !currency || !description || !draftId) {
+            return res.status(400).json({
+                message: 'Missing required fields: amount, currency, description, draftId'
             });
-        } else {
-            // Обновление orderId для существующего неоплаченного профиля
-            draft.orderId = orderId;
         }
+
+        // 2. Поиск черновика
+        const draft = await Draft.findById(draftId);
+        if (!draft) {
+            return res.status(404).json({ message: 'Draft not found' });
+        }
+
+        // 3. Проверка статуса черновика
+        if (draft.paid) {
+            return res.status(400).json({ message: 'This draft has already been paid' });
+        }
+
+        // 4. Генерация уникального orderId
+        let orderId;
+        let isUnique = false;
+        let attempts = 0;
+
+        while (!isUnique && attempts < 5) {
+            orderId = `order_${uuidv4()}`;
+            const exists = await Payment.exists({ orderId });
+            if (!exists) isUnique = true;
+            attempts++;
+        }
+
+        if (!isUnique) {
+            throw new Error('Failed to generate unique orderId');
+        }
+
+        // 5. Обновление черновика
+        draft.orderId = orderId;
         await draft.save();
 
-        // Создание платежа
+        // 6. Создание записи о платеже
         const payment = new Payment({
             orderId,
             amount,
             currency,
-            description,
+            description: `${description} - ${draft.name}`,
             status: 'pending',
+            draftId: draft._id,
+            payment_id: orderId
         });
         await payment.save();
 
+        // 7. Подготовка данных для LiqPay
         const params = {
             public_key: publicKey,
             version: '3',
             action: 'pay',
             amount,
             currency,
-            description,
+            description: `Payment for ${draft.name}`,
             order_id: orderId,
-            language: 'ru',
-            server_url: 'https://api.livingmemory.pro/api/payment/callback',
-            result_url: 'http://localhost:3000/success',
+            language: 'uk',
+            server_url: `${process.env.API_BASE_URL}/api/payment/callback`,
+            result_url: `${process.env.CLIENT_URL}/payment-success?orderId=${orderId}`,
         };
 
         const { data, signature } = generateLiqPayData(params);
-        res.json({ data, signature, orderId });
+
+        res.json({
+            success: true,
+            data,
+            signature,
+            orderId
+        });
+
     } catch (error) {
-        console.error('Error creating payment:', error.message, error.stack);
-        res.status(500).json({ message: 'Ошибка при создании платежа', error: error.message });
+        console.error('[Payment Error]', error);
+        res.status(500).json({
+            success: false,
+            message: 'Payment creation failed',
+            error: error.message
+        });
     }
 };
 
-// Обработка коллбека от LiqPay
+// Оптимизированный обработчик коллбэка
 exports.handleCallback = async (req, res) => {
     try {
         const { data, signature } = req.body;
 
-        // 1. Верификация подписи (добавьте логирование)
-        console.log('Received callback:', { data, signature });
-
+        // 1. Верификация подписи
         const computedSignature = crypto
             .createHash('sha1')
             .update(privateKey + data + privateKey)
             .digest('base64');
 
         if (signature !== computedSignature) {
-            console.error('Invalid signature', { received: signature, computed: computedSignature });
+            console.error('[Invalid Signature]', { received: signature, computed: computedSignature });
             return res.status(400).json({ message: 'Invalid signature' });
         }
 
-        // 2. Парсинг данных (добавьте подробное логирование)
+        // 2. Парсинг данных
         const decoded = JSON.parse(Buffer.from(data, 'base64').toString());
-        console.log('Decoded callback data:', JSON.stringify(decoded, null, 2));
+        console.log('[Callback Data]', decoded);
 
         // 3. Поиск и обновление платежа
         const payment = await Payment.findOneAndUpdate(
@@ -120,63 +134,55 @@ exports.handleCallback = async (req, res) => {
             { new: true }
         );
 
-        console.log('Updated payment:', payment);
-
         if (!payment) {
-            console.error('Payment not found for order:', decoded.order_id);
             return res.status(404).json({ message: 'Payment not found' });
         }
 
-        // 4. Обновление черновика
+        // 4. Обновление черновика при успешной оплате
         if (['success', 'subscribed'].includes(decoded.status)) {
-            const updatedDraft = await Draft.findByIdAndUpdate(
+            await Draft.findByIdAndUpdate(
                 payment.draftId,
-                {
-                    paid: true,
-                    paymentDate: new Date(),
-                    status: 'active'
-                },
-                { new: true }
+                { paid: true, paymentDate: new Date() }
             );
-            console.log('Updated draft:', updatedDraft);
+            console.log(`Marked draft ${payment.draftId} as paid`);
         }
 
         res.status(200).send('OK');
+
     } catch (error) {
-        console.error('Callback processing error:', error);
+        console.error('[Callback Error]', error);
         res.status(500).json({ message: 'Callback processing failed' });
     }
 };
 
-// Проверка статуса профиля и обновление
-exports.checkProfileStatus = async (req, res) => {
+
+// Проверка статуса (оптимизированная)
+exports.checkStatus = async (req, res) => {
     try {
         const { orderId } = req.body;
 
         if (!orderId) {
-            return res.status(400).json({ message: 'orderId обязателен' });
+            return res.status(400).json({ message: 'orderId is required' });
         }
 
         const payment = await Payment.findOne({ orderId });
         if (!payment) {
-            return res.status(404).json({ message: 'Платеж не найден' });
+            return res.status(404).json({ message: 'Payment not found' });
         }
 
-        const draft = await Draft.findOne({ orderId });
+        const draft = await Draft.findById(payment.draftId);
         if (!draft) {
-            return res.status(404).json({ message: 'Профиль не найден' });
+            return res.status(404).json({ message: 'Draft not found' });
         }
 
-        // Если платеж успешен, обновляем статус профиля
-        if (['success', 'subscribed'].includes(payment.status) && !draft.paid) {
-            draft.paid = true;
-            await draft.save();
-            console.log(`Профиль обновлен до paid=true для orderId: ${orderId}`);
-        }
+        res.json({
+            paymentStatus: payment.status,
+            draftStatus: draft.paid,
+            lastUpdated: payment.updatedAt
+        });
 
-        res.json({ profile: draft, paymentStatus: payment.status });
     } catch (error) {
-        console.error('Error checking profile status:', error.message, error.stack);
-        res.status(500).json({ message: 'Ошибка при проверке статуса профиля', error: error.message });
+        console.error('[Status Check Error]', error);
+        res.status(500).json({ message: 'Status check failed' });
     }
 };

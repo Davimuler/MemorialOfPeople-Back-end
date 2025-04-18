@@ -112,7 +112,7 @@ app.use('/api/payment', paymentRoutes);
 
 // Тестовый маршрут
 app.get('/', (req, res) => {
-    res.send('Hello, World!');
+    res.send('Hello, liq!');
 });
 
 // Запуск сервера

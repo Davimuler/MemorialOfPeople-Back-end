@@ -65,7 +65,8 @@ exports.createPayment = async (req, res) => {
             currency,
             description: `${description} - ${draft.name}`,
             status: 'pending',
-            draftId: draft._id
+            draftId: draft._id,
+            payment_id: orderId
         });
         await payment.save();
 

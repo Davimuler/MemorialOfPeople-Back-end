@@ -15,10 +15,10 @@ const generateLiqPayData = (params) => {
     return { data, signature };
 };
 
-// Создание платежа (обновлённая версия)
+// Создание платежа
 exports.createPayment = async (req, res) => {
     try {
-        const { amount, currency, description, draftId } = req.body;
+        const { amount, currency, description, draftId, lang } = req.body;
 
         // 1. Валидация входящих данных
         if (!amount || !currency || !description || !draftId) {
@@ -27,18 +27,23 @@ exports.createPayment = async (req, res) => {
             });
         }
 
-        // 2. Поиск черновика
+        // 2. Валидация языка
+        const supportedLanguages = ['ua', 'eng', 'ro', 'de', 'pl', 'it', 'fr', 'es', 'cs', 'sk'];
+        const redirectLang = supportedLanguages.includes(lang) ? lang : 'ua'; // По умолчанию 'ua'
+        console.log('Received lang:', lang, 'Using redirectLang:', redirectLang);
+
+        // 3. Поиск черновика
         const draft = await Draft.findById(draftId);
         if (!draft) {
             return res.status(404).json({ message: 'Draft not found' });
         }
 
-        // 3. Проверка статуса черновика
+        // 4. Проверка статуса черновика
         if (draft.paid) {
             return res.status(400).json({ message: 'This draft has already been paid' });
         }
 
-        // 4. Генерация уникального orderId
+        // 5. Генерация уникального orderId
         let orderId;
         let isUnique = false;
         let attempts = 0;
@@ -54,11 +59,11 @@ exports.createPayment = async (req, res) => {
             throw new Error('Failed to generate unique orderId');
         }
 
-        // 5. Обновление черновика
+        // 6. Обновление черновика
         draft.orderId = orderId;
         await draft.save();
 
-        // 6. Создание записи о платеже
+        // 7. Создание записи о платеже
         const payment = new Payment({
             orderId,
             amount,
@@ -69,7 +74,7 @@ exports.createPayment = async (req, res) => {
         });
         await payment.save();
 
-        // 7. Подготовка данных для LiqPay
+        // 8. Подготовка данных для LiqPay
         const params = {
             public_key: publicKey,
             version: '3',
@@ -80,8 +85,10 @@ exports.createPayment = async (req, res) => {
             order_id: orderId,
             language: 'uk',
             server_url: `${process.env.API_BASE_URL}/api/payment/callback`,
-            result_url: `${process.env.CLIENT_URL}/dashboard`,
+            result_url: `${process.env.CLIENT_URL}/${redirectLang}/dashboard`, // Используем язык в URL
         };
+
+        console.log('LiqPay params:', params);
 
         const { data, signature } = generateLiqPayData(params);
 
@@ -153,25 +160,33 @@ exports.checkProfileStatus = async (req, res) => {
     try {
         const { orderId } = req.body;
 
+        console.log('Checking status for orderId:', orderId);
+
         if (!orderId) {
+            console.log('orderId is missing');
             return res.status(400).json({ message: 'orderId обязателен' });
         }
 
         const payment = await Payment.findOne({ orderId });
         if (!payment) {
+            console.log('Payment not found for orderId:', orderId);
             return res.status(404).json({ message: 'Платеж не найден' });
         }
+        console.log('Found payment:', payment);
 
         const draft = await Draft.findOne({ orderId });
         if (!draft) {
+            console.log('Draft not found for orderId:', orderId);
             return res.status(404).json({ message: 'Черновик не найден' });
         }
+        console.log('Found draft:', draft);
 
-        // Если платеж успешен, обновляем статус черновика
         if (['success', 'subscribed'].includes(payment.status) && !draft.paid) {
             draft.paid = true;
             await draft.save();
-            console.log(`Черновик обновлен до paid=true для orderId: ${orderId}`);
+            console.log(`Draft updated to paid=true for orderId: ${orderId}`);
+        } else {
+            console.log(`No update needed for draft. Payment status: ${payment.status}, Draft paid: ${draft.paid}`);
         }
 
         res.json({ draft, paymentStatus: payment.status });

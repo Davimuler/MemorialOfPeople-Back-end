@@ -80,7 +80,7 @@ exports.createPayment = async (req, res) => {
             order_id: orderId,
             language: 'uk',
             server_url: `${process.env.API_BASE_URL}/api/payment/callback`,
-            result_url: `${process.env.CLIENT_URL}/payment-success?orderId=${orderId}`,
+            result_url: `${process.env.CLIENT_URL}/dashboard`,
         };
 
         const { data, signature } = generateLiqPayData(params);

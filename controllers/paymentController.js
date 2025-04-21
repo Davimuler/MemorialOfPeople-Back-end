@@ -65,6 +65,7 @@ exports.createPayment = async (req, res) => {
 
         // 7. Создание записи о платеже
         const payment = new Payment({
+            payment_id: `payment_${uuidv4()}`, // Generate a unique payment_id
             orderId,
             amount,
             currency,

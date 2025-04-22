@@ -4,6 +4,8 @@ const bcrypt = require('bcryptjs');
 const userSchema = new mongoose.Schema({
     firstName: { type: String },
     lastName: { type: String },
+    freeProfilesAvailable: { type: Number, default: 0 }, // Количество доступных бесплатных профилей
+    freeProfilesUsed: { type: Number, default: 0 },
     email: { type: String, required: true, unique: true },
     displayName: { type: String },
     phoneNumber: { type: String },

@@ -1,5 +1,5 @@
-// controllers/draftController.js
 const Draft = require('../models/Draft');
+const User = require('../models/User');
 
 const saveDraft = async (req, res) => {
     try {
@@ -17,13 +17,22 @@ const saveDraft = async (req, res) => {
             deathMonth,
             deathYear,
             youtubeVideoUrl,
-            orderId, // Добавляем orderId, если передан
+            orderId,
         } = req.body;
 
         // Валидация обязательных полей
         if (!email || !name) {
             return res.status(400).json({ message: 'Отсутствуют обязательные поля: email или name' });
         }
+
+        // Находим пользователя
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ message: 'Пользователь не найден' });
+        }
+
+        // Проверяем, есть ли у пользователя доступные бесплатные профили
+        const hasFreeProfiles = user.freeProfilesAvailable > 0;
 
         // Проверка, существует ли неоплаченный черновик для email
         let draft = await Draft.findOne({ email, paid: false });
@@ -41,7 +50,18 @@ const saveDraft = async (req, res) => {
             draft.deathMonth = deathMonth;
             draft.deathYear = deathYear;
             draft.youtubeVideoUrl = youtubeVideoUrl;
-            if (orderId) draft.orderId = orderId;
+
+            // Если передали orderId или есть бесплатные профили
+            if (orderId) {
+                draft.orderId = orderId;
+                draft.paid = true;
+            } else if (hasFreeProfiles) {
+                draft.paid = true;
+                draft.orderId = 'FREE_PROFILE';
+                user.freeProfilesAvailable -= 1;
+                user.freeProfilesUsed += 1; // Увеличиваем счетчик использованных профилей
+                await user.save();
+            }
         } else {
             // Создаем новый черновик
             draft = new Draft({
@@ -58,9 +78,16 @@ const saveDraft = async (req, res) => {
                 deathMonth,
                 deathYear,
                 youtubeVideoUrl,
-                paid: false,
-                orderId,
+                paid: orderId ? true : hasFreeProfiles,
+                orderId: orderId || (hasFreeProfiles ? 'FREE_PROFILE' : undefined),
             });
+
+            // Если используется бесплатный профиль, обновляем счетчики
+            if (hasFreeProfiles && !orderId) {
+                user.freeProfilesAvailable -= 1;
+                user.freeProfilesUsed += 1; // Увеличиваем счетчик использованных профилей
+                await user.save();
+            }
         }
 
         await draft.save();
@@ -68,13 +95,16 @@ const saveDraft = async (req, res) => {
         res.status(201).json({
             message: 'Черновик успешно сохранен',
             draftId: draft._id,
+            paid: draft.paid,
+            freeProfilesAvailable: user.freeProfilesAvailable,
+            freeProfilesUsed: user.freeProfilesUsed,
         });
     } catch (error) {
         console.error('Ошибка при сохранении черновика:', error.message, error.stack);
         res.status(500).json({ message: 'Ошибка при сохранении черновика' });
     }
 };
-
+// Остальные методы остаются без изменений
 const updateDraftPaymentStatus = async (req, res) => {
     try {
         const { draftId } = req.params;

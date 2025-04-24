@@ -19,6 +19,7 @@ const saveDraft = async (req, res) => {
             deathYear,
             youtubeVideoUrl,
             orderId,
+            pageType,
             country, // New country field
         } = req.body;
 
@@ -53,6 +54,7 @@ const saveDraft = async (req, res) => {
             draft.deathYear = deathYear;
             draft.youtubeVideoUrl = youtubeVideoUrl;
             draft.country = country; // Update country
+            draft.pageType = pageType;
 
             // Если передали orderId или есть бесплатные профили
             if (orderId) {
@@ -82,6 +84,7 @@ const saveDraft = async (req, res) => {
                 deathYear,
                 youtubeVideoUrl,
                 country, // Set country
+                pageType,
                 paid: orderId ? true : hasFreeProfiles,
                 orderId: orderId || (hasFreeProfiles ? 'FREE_PROFILE' : undefined),
             });

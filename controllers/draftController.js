@@ -1,6 +1,7 @@
 const Draft = require('../models/Draft');
 const User = require('../models/User');
 
+// controllers/draftController.js
 const saveDraft = async (req, res) => {
     try {
         const {
@@ -18,6 +19,7 @@ const saveDraft = async (req, res) => {
             deathYear,
             youtubeVideoUrl,
             orderId,
+            country, // New country field
         } = req.body;
 
         // Валидация обязательных полей
@@ -50,6 +52,7 @@ const saveDraft = async (req, res) => {
             draft.deathMonth = deathMonth;
             draft.deathYear = deathYear;
             draft.youtubeVideoUrl = youtubeVideoUrl;
+            draft.country = country; // Update country
 
             // Если передали orderId или есть бесплатные профили
             if (orderId) {
@@ -59,7 +62,7 @@ const saveDraft = async (req, res) => {
                 draft.paid = true;
                 draft.orderId = 'FREE_PROFILE';
                 user.freeProfilesAvailable -= 1;
-                user.freeProfilesUsed += 1; // Увеличиваем счетчик использованных профилей
+                user.freeProfilesUsed += 1;
                 await user.save();
             }
         } else {
@@ -78,6 +81,7 @@ const saveDraft = async (req, res) => {
                 deathMonth,
                 deathYear,
                 youtubeVideoUrl,
+                country, // Set country
                 paid: orderId ? true : hasFreeProfiles,
                 orderId: orderId || (hasFreeProfiles ? 'FREE_PROFILE' : undefined),
             });
@@ -85,7 +89,7 @@ const saveDraft = async (req, res) => {
             // Если используется бесплатный профиль, обновляем счетчики
             if (hasFreeProfiles && !orderId) {
                 user.freeProfilesAvailable -= 1;
-                user.freeProfilesUsed += 1; // Увеличиваем счетчик использованных профилей
+                user.freeProfilesUsed += 1;
                 await user.save();
             }
         }

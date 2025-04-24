@@ -15,6 +15,7 @@ const DraftSchema = new mongoose.Schema({
     deathMonth: { type: String },
     deathYear: { type: String },
     youtubeVideoUrl: { type: String },
+    country: { type: String },
     paid: { type: Boolean, default: false }, // Статус оплаты
     orderId: { type: String }, // Связь с платежом
 }, { timestamps: true });

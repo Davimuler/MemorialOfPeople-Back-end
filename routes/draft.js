@@ -3,31 +3,21 @@ const router = express.Router();
 const draftController = require("../controllers/draftController");
 const adminController = require("../controllers/adminController");
 
-// Сохранение черновика
+// Операции с черновиками
 router.post('/', draftController.saveDraft);
+router.put('/:draftId([0-9a-fA-F]{24})/payment', draftController.updateDraftPaymentStatus);
+router.put('/:draftId([0-9a-fA-F]{24})', draftController.updateDraft);
 
-// Обновление статуса оплаты черновика
-router.put('/:draftId/payment', draftController.updateDraftPaymentStatus);
-
-// Получение черновиков по email
+// Получение данных о черновиках
 router.get('/email/:email', draftController.getDraftsByEmail);
-
-// Получение черновика по ID
-router.get('/:draftId', draftController.getDraftById);
-
-// Обновление черновика
-router.put('/:draftId', draftController.updateDraft);
-
-// Поиск черновиков по имени
-router.get('/search/:email?', draftController.searchDraftsByName);
-
-// Получение черновиков с пагинацией
+router.get('/search', draftController.searchDraftsByName);
 router.get('/paginated', draftController.getDraftsPaginated);
 
-// Добавление бесплатных профилей
-router.post('/add-free-profiles', adminController.addFreeProfiles);
+// Получение черновика по ID
+router.get('/:draftId([0-9a-fA-F]{24})', draftController.getDraftById);
 
-// Получение информации о бесплатных профилях пользователя
+// Админские операции
+router.post('/add-free-profiles', adminController.addFreeProfiles);
 router.get('/free-profiles/:email', adminController.getUserFreeProfiles);
 
 module.exports = router;
